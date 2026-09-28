@@ -456,7 +456,7 @@ export async function invokeStructuredAI(
       name: 'Google AI Studio (Gemini)',
       model:
         env.GEMINI_MODEL ||
-        'gemini-2.0-flash',
+        'gemini-1.5-flash',
       key:
         env.GEMINI_API_KEY ||
         env.GOOGLE_AI_STUDIO_KEY,
@@ -466,7 +466,7 @@ export async function invokeStructuredAI(
           'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
           (env.GEMINI_API_KEY || env.GOOGLE_AI_STUDIO_KEY)!,
           env.GEMINI_MODEL ||
-            'gemini-2.0-flash',
+            'gemini-1.5-flash',
           {
             temperature: 0,
             messages,

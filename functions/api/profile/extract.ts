@@ -616,7 +616,7 @@ export async function onRequestPost(
       name: 'Google AI Studio (Gemini)',
       model:
         context.env.GEMINI_MODEL ||
-        'gemini-2.0-flash',
+        'gemini-1.5-flash',
       key:
         context.env.GEMINI_API_KEY ||
         context.env.GOOGLE_AI_STUDIO_KEY,
@@ -627,7 +627,7 @@ export async function onRequestPost(
           'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
           (context.env.GEMINI_API_KEY || context.env.GOOGLE_AI_STUDIO_KEY)!,
           context.env.GEMINI_MODEL ||
-            'gemini-2.0-flash',
+            'gemini-1.5-flash',
           {
             temperature: 0,
 
