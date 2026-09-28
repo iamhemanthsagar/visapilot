@@ -61,7 +61,7 @@ export function DossierPage() {
       benchmark,
       roadmap,
     })
-  }, [profileExtraction, parsedDocument, activePathway, pathwayComparison, analysisState, evidenceState, gapAnalysis])
+  }, [profileExtraction, parsedDocument, activePathway, pathwayComparison, result, result?.claims, result?.criterionResults, evidenceState.evidence, evidenceState.reconciliations, gapAnalysis.gaps])
 
   if (!result || !dossier) {
     return (

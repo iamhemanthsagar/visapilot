@@ -85,11 +85,15 @@ export function EvidencePage() {
 
   const result = analysisState.result
 
+  const evidenceLength = evidenceState.evidence.length
+  const evidenceStateRef = useRef(evidenceState)
+  evidenceStateRef.current = evidenceState
+
   useEffect(() => {
-    if (!result || !parsedDocument || evidenceState.evidence.length > 0) return
+    if (!result || !parsedDocument || evidenceLength > 0) return
     const profileEvidence = createProfileDerivedEvidence(result.claims, parsedDocument)
-    setEvidenceState({ ...evidenceState, evidence: profileEvidence })
-  }, [result, parsedDocument, evidenceState.evidence.length])
+    setEvidenceState({ ...evidenceStateRef.current, evidence: profileEvidence })
+  }, [result, parsedDocument, evidenceLength, setEvidenceState])
 
   const mappedClaims = useMemo(() => {
     if (!result) return []
