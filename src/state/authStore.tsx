@@ -40,6 +40,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
   const [isLoading, setIsLoading] = useState(false)
 
+  // Check Cloudflare Access session on mount
+  useEffect(() => {
+    let isMounted = true
+    async function checkCloudflareAuth() {
+      try {
+        const res = await fetch('/api/auth/me')
+        if (res.ok) {
+          const data = await res.json()
+          if (data && data.authenticated && data.user && isMounted) {
+            setUser(data.user)
+          }
+        }
+      } catch {
+        // Fallback silently to localStorage session
+      }
+    }
+    checkCloudflareAuth()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   useEffect(() => {
     try {
       if (user) {
