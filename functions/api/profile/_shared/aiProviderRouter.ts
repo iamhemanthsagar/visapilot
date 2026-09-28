@@ -8,6 +8,7 @@ export interface AIProviderEnv {
   GEMINI_API_KEY?: string
   GOOGLE_AI_STUDIO_KEY?: string
   GEMINI_MODEL?: string
+  GEMINI_MODEL_LITE?: string
 
   COHERE_API_KEY?: string
   COHERE_MODEL?: string
@@ -453,20 +454,43 @@ export async function invokeStructuredAI(
     },
 
     {
-      name: 'Google AI Studio (Gemini)',
+      name: 'Google AI Studio (Gemini 3.8 Flash)',
       model:
         env.GEMINI_MODEL ||
-        'gemini-1.5-flash',
+        'gemini-3.8-flash',
       key:
         env.GEMINI_API_KEY ||
         env.GOOGLE_AI_STUDIO_KEY,
       call: () =>
         callOpenAICompatibleProvider(
-          'Google AI Studio (Gemini)',
+          'Google AI Studio (Gemini 3.8 Flash)',
           'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
           (env.GEMINI_API_KEY || env.GOOGLE_AI_STUDIO_KEY)!,
           env.GEMINI_MODEL ||
-            'gemini-1.5-flash',
+            'gemini-3.8-flash',
+          {
+            temperature: 0,
+            messages,
+            response_format: { type: 'json_object' },
+          },
+        ),
+    },
+
+    {
+      name: 'Google AI Studio (Gemini 3.5 Flash Lite)',
+      model:
+        env.GEMINI_MODEL_LITE ||
+        'gemini-3.5-flash-lite',
+      key:
+        env.GEMINI_API_KEY ||
+        env.GOOGLE_AI_STUDIO_KEY,
+      call: () =>
+        callOpenAICompatibleProvider(
+          'Google AI Studio (Gemini 3.5 Flash Lite)',
+          'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+          (env.GEMINI_API_KEY || env.GOOGLE_AI_STUDIO_KEY)!,
+          env.GEMINI_MODEL_LITE ||
+            'gemini-3.5-flash-lite',
           {
             temperature: 0,
             messages,
