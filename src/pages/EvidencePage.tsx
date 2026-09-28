@@ -159,47 +159,109 @@ export function EvidencePage() {
     const nextEvidence = [...evidenceState.evidence]
 
     try {
-      for (let index = 0; index < candidates.length; index += 1) {
-        const item = candidates[index]
-        const criterion = criterionFor(item.criterionId)
-        if (!criterion) continue
-        const input: ReconcileEvidenceInput = {
-          claim: item.claim,
-          criterion: {
-            id: criterion.id,
-            code: criterion.code,
-            title: criterion.title,
-            regulatoryRequirement: criterion.regulatoryRequirement,
-          },
-          propositions: EB1A_PROPOSITIONS[criterion.code].map(proposition => ({ id: proposition.id, statement: proposition.statement })),
-          evidence: item.evidence.map(evidence => ({
-            id: evidence.id,
-            title: evidence.title,
-            sourceType: evidence.sourceType,
-            provenance: evidence.provenance,
-            content: evidence.content,
-          })),
-        }
-        const response = await requestEB1AEvidenceReconciliation(input)
-        reconciliations.push({
-          claimId: item.claim.id,
-          criterionId: item.criterionId,
-          status: response.output.claimVerification.status,
-          rationale: response.output.claimVerification.rationale,
-          evidenceAssessments: response.output.evidenceAssessments,
-          propositionResults: response.output.propositionResults,
-          executionId: response.execution.id,
-        })
+      // Split candidates into external exhibits (requiring LLM reconciliation) and self-asserted CV records (deterministic)
+      const externalCandidates: typeof candidates = []
+      
+      for (const item of candidates) {
+        const hasExternalExhibit = item.evidence.some(
+          ev => !ev.id.startsWith('EV-PROFILE-') && ev.sourceType !== 'CANDIDATE_PROVIDED'
+        )
 
-        for (const assessment of response.output.evidenceAssessments) {
-          const evidence = nextEvidence.find(candidate => candidate.id === assessment.evidenceId)
-          if (!evidence) continue
-          if (assessment.status === 'SUPPORTED') evidence.verificationStatus = 'VERIFIED'
-          else if (assessment.status === 'PARTIALLY_SUPPORTED' && evidence.verificationStatus !== 'VERIFIED') evidence.verificationStatus = 'PARTIALLY_VERIFIED'
-          else if (assessment.status === 'CONFLICTING') evidence.verificationStatus = 'CONFLICTING'
+        if (!hasExternalExhibit) {
+          // Self-asserted candidate record: grounded as UNVERIFIED (Kazarian rule: CV cannot corroborate itself)
+          reconciliations.push({
+            claimId: item.claim.id,
+            criterionId: item.criterionId,
+            status: 'UNVERIFIED',
+            rationale: 'Self-asserted profile claim from CV. Requires independent primary exhibit or third-party corroboration.',
+            evidenceAssessments: item.evidence.map(ev => ({
+              propositionId: '',
+              evidenceId: ev.id,
+              status: 'UNVERIFIED',
+              rationale: 'Profile-derived statement. Not independent corroboration.',
+              supportedFacts: [],
+              unsupportedFacts: [],
+              conflicts: [],
+            })),
+            propositionResults: [],
+            executionId: `det_${item.claim.id}_${Date.now()}`,
+          })
+        } else {
+          externalCandidates.push(item)
+        }
+      }
+
+      // Process external exhibit reconciliation with parallel concurrency (up to 4 concurrent requests)
+      if (externalCandidates.length > 0) {
+        const CONCURRENCY = 4
+        let currentIndex = 0
+
+        const processCandidate = async (item: typeof candidates[0]) => {
+          const criterion = criterionFor(item.criterionId)
+          if (!criterion) return
+
+          const input: ReconcileEvidenceInput = {
+            claim: item.claim,
+            criterion: {
+              id: criterion.id,
+              code: criterion.code,
+              title: criterion.title,
+              regulatoryRequirement: criterion.regulatoryRequirement,
+            },
+            propositions: EB1A_PROPOSITIONS[criterion.code].map(proposition => ({
+              id: proposition.id,
+              statement: proposition.statement,
+            })),
+            evidence: item.evidence.map(evidence => ({
+              id: evidence.id,
+              title: evidence.title,
+              sourceType: evidence.sourceType,
+              provenance: evidence.provenance,
+              content: evidence.content,
+            })),
+          }
+
+          const response = await requestEB1AEvidenceReconciliation(input)
+
+          reconciliations.push({
+            claimId: item.claim.id,
+            criterionId: item.criterionId,
+            status: response.output.claimVerification.status,
+            rationale: response.output.claimVerification.rationale,
+            evidenceAssessments: response.output.evidenceAssessments,
+            propositionResults: response.output.propositionResults,
+            executionId: response.execution.id,
+          })
+
+          for (const assessment of response.output.evidenceAssessments) {
+            const evidence = nextEvidence.find(candidate => candidate.id === assessment.evidenceId)
+            if (!evidence) continue
+            if (assessment.status === 'SUPPORTED') evidence.verificationStatus = 'VERIFIED'
+            else if (assessment.status === 'PARTIALLY_SUPPORTED' && evidence.verificationStatus !== 'VERIFIED') evidence.verificationStatus = 'PARTIALLY_VERIFIED'
+            else if (assessment.status === 'CONFLICTING') evidence.verificationStatus = 'CONFLICTING'
+          }
         }
 
-        setEvidenceState({ ...evidenceState, status: 'PROCESSING', evidence: [...nextEvidence], reconciliations: [...reconciliations], completed: false, error: null })
+        const runWorker = async () => {
+          while (currentIndex < externalCandidates.length) {
+            const idx = currentIndex++
+            await processCandidate(externalCandidates[idx])
+            setEvidenceState({
+              ...evidenceState,
+              status: 'PROCESSING',
+              evidence: [...nextEvidence],
+              reconciliations: [...reconciliations],
+              completed: false,
+              error: null,
+            })
+          }
+        }
+
+        const workers = Array.from(
+          { length: Math.min(CONCURRENCY, externalCandidates.length) },
+          () => runWorker()
+        )
+        await Promise.all(workers)
       }
 
       const updatedAnalysis = applyEvidenceReconciliations(result, reconciliations)
