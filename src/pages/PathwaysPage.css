@@ -1,0 +1,278 @@
+.pathways-page {
+  display: grid;
+  gap: 20px;
+}
+
+.pathways-hero,
+.pathways-empty,
+.pathways-rationale-box,
+.pathway-card,
+.stage-next-banner {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+}
+
+.pathways-hero {
+  padding: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.pathways-hero h2 {
+  margin: 8px 0;
+  font-size: 30px;
+  letter-spacing: -0.03em;
+  color: #111827;
+}
+
+.pathways-hero p {
+  margin: 0;
+  color: #4b5563;
+  max-width: 760px;
+  line-height: 1.6;
+}
+
+.pathways-rationale-box {
+  padding: 20px 24px;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.rationale-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.rationale-heading h4 {
+  margin: 0;
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.pathways-rationale-box p {
+  margin: 0 0 8px;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.pathways-rationale-box small {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pathway-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.pathway-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+}
+
+.pathway-card.is-selected {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2);
+  background: #f0f9ff;
+}
+
+.pathway-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pathway-card-title h3 {
+  margin: 8px 0 4px;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.pathway-card-title p {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.pathway-score-block {
+  text-align: right;
+}
+
+.score-num {
+  display: block;
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.score-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.pathway-metrics {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+}
+
+.pathway-metrics > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.pathway-metrics strong {
+  color: #0f172a;
+}
+
+.pathway-metrics span {
+  color: #64748b;
+}
+
+.pathway-card-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.select-btn {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 9px;
+  border: 1px solid #0f172a;
+  background: #0f172a;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.select-btn:hover {
+  opacity: 0.9;
+}
+
+.select-btn.is-active {
+  background: #0284c7;
+  border-color: #0284c7;
+}
+
+.details-btn {
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.details-btn:hover {
+  color: #0f172a;
+}
+
+.pathway-req-list {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed #cbd5e1;
+  display: grid;
+  gap: 10px;
+}
+
+.pathway-req-list h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #475569;
+}
+
+.req-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  display: grid;
+  gap: 4px;
+}
+
+.req-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.req-item-top strong {
+  font-size: 12px;
+  color: #1e293b;
+}
+
+.req-item p {
+  margin: 0;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.req-missing {
+  font-size: 11px;
+  color: #b91c1c;
+}
+
+.stage-next-banner {
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.stage-next-banner strong {
+  display: block;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.stage-next-banner span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+@media (max-width: 960px) {
+  .pathway-cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .pathways-hero,
+  .stage-next-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

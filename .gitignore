@@ -21,4 +21,13 @@ dist-ssr
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+.wrangler
+
+ai-lab/.env
+ai-lab/results/
