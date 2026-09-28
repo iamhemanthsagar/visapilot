@@ -5,17 +5,21 @@ export interface AIProviderEnv {
   OPENROUTER_API_KEY?: string
   OPENROUTER_MODEL?: string
 
+  GEMINI_API_KEY?: string
+  GOOGLE_AI_STUDIO_KEY?: string
+  GEMINI_MODEL?: string
+
+  COHERE_API_KEY?: string
+  COHERE_MODEL?: string
+
+  MISTRAL_API_KEY?: string
+  MISTRAL_MODEL?: string
+
   NVIDIA_NIM_API_KEY_1?: string
   NVIDIA_MODEL_1?: string
 
   NVIDIA_NIM_API_KEY_2?: string
   NVIDIA_MODEL_2?: string
-
-  MISTRAL_API_KEY?: string
-  MISTRAL_MODEL?: string
-
-  COHERE_API_KEY?: string
-  COHERE_MODEL?: string
 
   // Local LLM (LM Studio) — dev only, never required in production
   USE_LOCAL_MODEL?: string
@@ -449,6 +453,52 @@ export async function invokeStructuredAI(
     },
 
     {
+      name: 'Google AI Studio (Gemini)',
+      model:
+        env.GEMINI_MODEL ||
+        'gemini-2.0-flash',
+      key:
+        env.GEMINI_API_KEY ||
+        env.GOOGLE_AI_STUDIO_KEY,
+      call: () =>
+        callOpenAICompatibleProvider(
+          'Google AI Studio (Gemini)',
+          'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+          (env.GEMINI_API_KEY || env.GOOGLE_AI_STUDIO_KEY)!,
+          env.GEMINI_MODEL ||
+            'gemini-2.0-flash',
+          {
+            temperature: 0,
+            messages,
+            response_format: { type: 'json_object' },
+          },
+        ),
+    },
+
+    {
+      name: 'Cohere',
+      model:
+        env.COHERE_MODEL ||
+        'command-a-plus-05-2026',
+      key:
+        env.COHERE_API_KEY,
+      call: () =>
+        callCohere(
+          env.COHERE_API_KEY!,
+          env.COHERE_MODEL ||
+            'command-a-plus-05-2026',
+          {
+            temperature: 0,
+            messages,
+            response_format: {
+              type: 'json_object',
+              schema: request.responseSchema,
+            },
+          },
+        ),
+    },
+
+    {
       name: 'Mistral',
       model:
         env.MISTRAL_MODEL ||
@@ -473,29 +523,6 @@ export async function invokeStructuredAI(
                 schema:
                   request.responseSchema,
               },
-            },
-          },
-        ),
-    },
-
-    {
-      name: 'Cohere',
-      model:
-        env.COHERE_MODEL ||
-        'command-a-plus-05-2026',
-      key:
-        env.COHERE_API_KEY,
-      call: () =>
-        callCohere(
-          env.COHERE_API_KEY!,
-          env.COHERE_MODEL ||
-            'command-a-plus-05-2026',
-          {
-            temperature: 0,
-            messages,
-            response_format: {
-              type: 'json_object',
-              schema: request.responseSchema,
             },
           },
         ),

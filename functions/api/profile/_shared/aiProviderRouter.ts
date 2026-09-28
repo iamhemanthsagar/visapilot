@@ -1,12 +1,19 @@
-export type AIProviderEnv = {
+export interface AIProviderEnv {
   GROQ_API_KEY?: string
   GROQ_MODEL?: string
 
-  MISTRAL_API_KEY?: string
-  MISTRAL_MODEL?: string
-
   OPENROUTER_API_KEY?: string
   OPENROUTER_MODEL?: string
+
+  GEMINI_API_KEY?: string
+  GOOGLE_AI_STUDIO_KEY?: string
+  GEMINI_MODEL?: string
+
+  COHERE_API_KEY?: string
+  COHERE_MODEL?: string
+
+  MISTRAL_API_KEY?: string
+  MISTRAL_MODEL?: string
 
   NVIDIA_NIM_API_KEY_1?: string
   NVIDIA_MODEL_1?: string
@@ -14,18 +21,23 @@ export type AIProviderEnv = {
   NVIDIA_NIM_API_KEY_2?: string
   NVIDIA_MODEL_2?: string
 
-  
-
-  COHERE_API_KEY?: string
-  COHERE_MODEL?: string
+  // Local LLM (LM Studio) — dev only, never required in production
+  USE_LOCAL_MODEL?: string
+  LOCAL_LLM_ENDPOINT?: string
+  LOCAL_LLM_MODEL?: string
 }
+
+export type AIProviderAttemptStatus =
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'SKIPPED'
 
 export type AIProviderAttempt = {
   provider: string
   model: string
-  actualModel?: string
-  status: 'SUCCESS' | 'FAILED' | 'SKIPPED'
+  status: AIProviderAttemptStatus
   latencyMs: number
+  actualModel?: string
   statusCode?: number
   error?: string
   reason?: string
@@ -60,94 +72,101 @@ type ProviderDefinition = {
   call: () => Promise<ProviderResult>
 }
 
-const PROVIDER_TIMEOUT_MS =
-  30_000
+const PROVIDER_TIMEOUT_MS = 30_000
+// Local models are much slower — give them up to 3 minutes
+const LOCAL_PROVIDER_TIMEOUT_MS = 180_000
 
 function buildMessages(
   systemPrompt: string,
   userPrompt?: string,
 ) {
-  return [
+  const messages: Array<{
+    role: 'system' | 'user'
+    content: string
+  }> = [
     {
       role: 'system',
       content: systemPrompt,
     },
-    ...(userPrompt
-      ? [
-          {
-            role: 'user',
-            content: userPrompt,
-          },
-        ]
-      : []),
   ]
-}
 
-function createStructuredResponseFormat(
-  name: string,
-  schema: unknown,
-) {
-  return {
-    type: 'json_schema',
-    json_schema: {
-      name,
-      strict: true,
-      schema,
-    },
+  if (userPrompt) {
+    messages.push({
+      role: 'user',
+      content: userPrompt,
+    })
   }
-}
 
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMs: number,
-) {
-  const controller =
-    new AbortController()
-
-  const timeout =
-    setTimeout(
-      () => controller.abort(),
-      timeoutMs,
-    )
-
-  try {
-    return await fetch(
-      input,
-      {
-        ...init,
-        signal:
-          controller.signal,
-      },
-    )
-  } finally {
-    clearTimeout(timeout)
-  }
+  return messages
 }
 
 async function readProviderError(
   response: Response,
 ) {
-  let message =
-    `HTTP ${response.status}`
+  const body = await response.text()
+
+  let message = body
 
   try {
-    const body =
-      await response.text()
+    const parsed = JSON.parse(body)
 
-    if (body) {
-      message =
-        `${message}: ${body}`
-    }
+    message =
+      parsed?.error?.message ||
+      parsed?.message ||
+      body
   } catch {
-    // Preserve the HTTP status if
-    // the response body cannot be read.
+    // Keep raw response text.
   }
 
   return {
-    message,
-    statusCode:
-      response.status,
+    statusCode: response.status,
+    message: `${response.status} ${response.statusText}: ${message}`,
+  }
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+) {
+  const controller = new AbortController()
+
+  const timeout = setTimeout(() => {
+    controller.abort()
+  }, timeoutMs)
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.name === 'AbortError'
+    ) {
+      throw new Error(
+        `Provider request timed out after ${timeoutMs / 1000}s.`,
+      )
+    }
+
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function createStructuredResponseFormat(
+  responseSchemaName: string,
+  responseSchema: unknown,
+) {
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: responseSchemaName,
+      strict: true,
+      schema: responseSchema,
+    },
   }
 }
 
@@ -157,6 +176,7 @@ async function callOpenAICompatibleProvider(
   apiKey: string,
   model: string,
   requestBody: Record<string, unknown>,
+  timeoutMs = PROVIDER_TIMEOUT_MS,
 ): Promise<ProviderResult> {
   console.log(
     `[VisaPilot] ${providerName} → sending request`,
@@ -169,32 +189,24 @@ async function callOpenAICompatibleProvider(
         method: 'POST',
 
         headers: {
-          Authorization:
-            `Bearer ${apiKey}`,
-
-          'Content-Type':
-            'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
 
-        body:
-          JSON.stringify({
-            model,
-            ...requestBody,
-          }),
+        body: JSON.stringify({
+          model,
+          ...requestBody,
+        }),
       },
-      PROVIDER_TIMEOUT_MS,
+      timeoutMs,
     )
 
   if (!response.ok) {
     const providerError =
-      await readProviderError(
-        response,
-      )
+      await readProviderError(response)
 
     throw Object.assign(
-      new Error(
-        providerError.message,
-      ),
+      new Error(providerError.message),
       {
         statusCode:
           providerError.statusCode,
@@ -213,8 +225,7 @@ async function callOpenAICompatibleProvider(
     }
 
   const content =
-    payload.choices?.[0]?.message
-      ?.content
+    payload.choices?.[0]?.message?.content
 
   if (!content) {
     throw new Error(
@@ -224,10 +235,8 @@ async function callOpenAICompatibleProvider(
 
   return {
     content,
-
     actualModel:
-      payload.model ||
-      model,
+      payload.model || model,
   }
 }
 
@@ -247,33 +256,24 @@ async function callCohere(
         method: 'POST',
 
         headers: {
-          Authorization:
-            `Bearer ${apiKey}`,
-
-          'Content-Type':
-            'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
 
-        body:
-          JSON.stringify({
-            model,
-
-            ...requestBody,
-          }),
+        body: JSON.stringify({
+          model,
+          ...requestBody,
+        }),
       },
       PROVIDER_TIMEOUT_MS,
     )
 
   if (!response.ok) {
     const providerError =
-      await readProviderError(
-        response,
-      )
+      await readProviderError(response)
 
     throw Object.assign(
-      new Error(
-        providerError.message,
-      ),
+      new Error(providerError.message),
       {
         statusCode:
           providerError.statusCode,
@@ -293,8 +293,7 @@ async function callCohere(
 
   const content =
     payload.message?.content?.find(
-      item =>
-        item.type === 'text',
+      item => item.type === 'text',
     )?.text
 
   if (!content) {
@@ -358,8 +357,7 @@ export async function invokeStructuredAI(
   env: AIProviderEnv,
   request: StructuredAIRequest,
 ): Promise<StructuredAIResult> {
-  const requestStartedAt =
-    Date.now()
+  const requestStartedAt = Date.now()
 
   console.log(
     '[VisaPilot] ========================================',
@@ -381,227 +379,205 @@ export async function invokeStructuredAI(
       request.responseSchema,
     )
 
-  const providers: ProviderDefinition[] =
-    [
-      {
-        name: 'Groq',
-
-        model:
+  const providers: ProviderDefinition[] = [
+    // ─── Local LLM (LM Studio) ──────────────────────────────────────────────
+    // Active only when USE_LOCAL_MODEL=true in .dev.vars.
+    // If the local server is down or fails, falls through to cloud providers.
+    // Set USE_LOCAL_MODEL=false (or delete the line) to skip entirely.
+    ...(env.USE_LOCAL_MODEL === 'true' && env.LOCAL_LLM_ENDPOINT
+      ? [{
+          name: 'LM Studio (Local)',
+          model: env.LOCAL_LLM_MODEL || 'local-model',
+          key: 'local',  // LM Studio ignores the key — dummy value required by ProviderDefinition
+          call: () => callOpenAICompatibleProvider(
+            'LM Studio (Local)',
+            env.LOCAL_LLM_ENDPOINT!,
+            'local',
+            env.LOCAL_LLM_MODEL || 'local-model',
+            {
+              temperature: 0,
+              messages,
+              // LM Studio accepts only 'json_schema' or 'text'.
+              // Use 'text' — parseModelOutput() handles raw JSON extraction from the text response.
+              response_format: { type: 'text' },
+            },
+            LOCAL_PROVIDER_TIMEOUT_MS,  // 3 min — local models are much slower than cloud APIs
+          ),
+        }]
+      : []),
+    // ─── Cloud Providers ─────────────────────────────────────────────────────
+    {
+      name: 'Groq',
+      model:
+        env.GROQ_MODEL ||
+        'openai/gpt-oss-120b',
+      key: env.GROQ_API_KEY,
+      call: () =>
+        callOpenAICompatibleProvider(
+          'Groq',
+          'https://api.groq.com/openai/v1/chat/completions',
+          env.GROQ_API_KEY!,
           env.GROQ_MODEL ||
-          'openai/gpt-oss-120b',
+            'openai/gpt-oss-120b',
+          {
+            temperature: 0,
+            max_tokens: 12000,
+            messages,
+            response_format:
+              structuredResponseFormat,
+          },
+        ),
+    },
 
-        key:
-          env.GROQ_API_KEY,
-
-        call: () =>
-          callOpenAICompatibleProvider(
-            'Groq',
-            'https://api.groq.com/openai/v1/chat/completions',
-            env.GROQ_API_KEY!,
-            env.GROQ_MODEL ||
-              'openai/gpt-oss-120b',
-            {
-              temperature: 0,
-
-              /*
-               * Keep the completion budget bounded.
-               * The previous 12k budget itself contributed
-               * to Groq TPM/request-size rejection.
-               */
-              max_completion_tokens:
-                3200,
-
-              reasoning_effort:
-                'low',
-
-              messages,
-
-              response_format:
-                structuredResponseFormat,
-            },
-          ),
-      },
-
-      {
-        name: 'OpenRouter',
-
-        model:
+    {
+      name: 'OpenRouter',
+      model:
+        env.OPENROUTER_MODEL ||
+        'openrouter/auto',
+      key:
+        env.OPENROUTER_API_KEY,
+      call: () =>
+        callOpenAICompatibleProvider(
+          'OpenRouter',
+          'https://openrouter.ai/api/v1/chat/completions',
+          env.OPENROUTER_API_KEY!,
           env.OPENROUTER_MODEL ||
-          'openrouter/auto',
+            'openrouter/auto',
+          {
+            temperature: 0,
+            messages,
+            response_format:
+              structuredResponseFormat,
+          },
+        ),
+    },
 
-        key:
-          env.OPENROUTER_API_KEY,
+    {
+      name: 'Google AI Studio (Gemini)',
+      model:
+        env.GEMINI_MODEL ||
+        'gemini-2.0-flash',
+      key:
+        env.GEMINI_API_KEY ||
+        env.GOOGLE_AI_STUDIO_KEY,
+      call: () =>
+        callOpenAICompatibleProvider(
+          'Google AI Studio (Gemini)',
+          'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+          (env.GEMINI_API_KEY || env.GOOGLE_AI_STUDIO_KEY)!,
+          env.GEMINI_MODEL ||
+            'gemini-2.0-flash',
+          {
+            temperature: 0,
+            messages,
+            response_format: { type: 'json_object' },
+          },
+        ),
+    },
 
-        call: () =>
-          callOpenAICompatibleProvider(
-            'OpenRouter',
-            'https://openrouter.ai/api/v1/chat/completions',
-            env.OPENROUTER_API_KEY!,
-            env.OPENROUTER_MODEL ||
-              'openrouter/auto',
-            {
-              temperature: 0,
-
-              max_tokens:
-                3200,
-
-              messages,
-
-              response_format:
-                structuredResponseFormat,
-            },
-          ),
-      },
-
-      {
-        name: 'Mistral',
-
-        model:
-          env.MISTRAL_MODEL ||
-          'mistral-medium-3-5',
-
-        key:
-          env.MISTRAL_API_KEY,
-
-        call: () =>
-          callOpenAICompatibleProvider(
-            'Mistral',
-            'https://api.mistral.ai/v1/chat/completions',
-            env.MISTRAL_API_KEY!,
-            env.MISTRAL_MODEL ||
-              'mistral-medium-3-5',
-            {
-              temperature: 0,
-
-              max_tokens:
-                3200,
-
-              messages,
-
-              response_format: {
-                type: 'json_schema',
-
-                json_schema: {
-                  name:
-                    request.responseSchemaName,
-
-                  strict: true,
-
-                  schema:
-                    request.responseSchema,
-                },
-              },
-            },
-          ),
-      },
-
-      {
-        name: 'NVIDIA NIM #1',
-
-        model:
-          env.NVIDIA_MODEL_1 ||
-          'z-ai/glm-5.3',
-
-        key:
-          env.NVIDIA_NIM_API_KEY_1,
-
-        call: () =>
-          callOpenAICompatibleProvider(
-            'NVIDIA NIM #1',
-            'https://integrate.api.nvidia.com/v1/chat/completions',
-            env.NVIDIA_NIM_API_KEY_1!,
-            env.NVIDIA_MODEL_1 ||
-              'z-ai/glm-5.3',
-            {
-              temperature: 0,
-
-              max_tokens:
-                3200,
-
-              messages,
-
-              response_format:
-                structuredResponseFormat,
-            },
-          ),
-      },
-
-      {
-        name: 'NVIDIA NIM #2',
-
-        model:
-          env.NVIDIA_MODEL_2 ||
-          'z-ai/glm-5.3-flash',
-
-        key:
-          env.NVIDIA_NIM_API_KEY_2,
-
-        call: () =>
-          callOpenAICompatibleProvider(
-            'NVIDIA NIM #2',
-            'https://integrate.api.nvidia.com/v1/chat/completions',
-            env.NVIDIA_NIM_API_KEY_2!,
-            env.NVIDIA_MODEL_2 ||
-              'z-ai/glm-5.3-flash',
-            {
-              temperature: 0,
-
-              max_tokens:
-                3200,
-
-              messages,
-
-              response_format:
-                structuredResponseFormat,
-            },
-          ),
-      },
-
-      {
-        name: 'Cohere',
-
-        model:
+    {
+      name: 'Cohere',
+      model:
+        env.COHERE_MODEL ||
+        'command-a-plus-05-2026',
+      key:
+        env.COHERE_API_KEY,
+      call: () =>
+        callCohere(
+          env.COHERE_API_KEY!,
           env.COHERE_MODEL ||
-          'command-a-plus-05-2026',
+            'command-a-plus-05-2026',
+          {
+            temperature: 0,
+            messages,
+            response_format: {
+              type: 'json_object',
+              schema: request.responseSchema,
+            },
+          },
+        ),
+    },
 
-        key:
-          env.COHERE_API_KEY,
-
-        call: () =>
-          callCohere(
-            env.COHERE_API_KEY!,
-            env.COHERE_MODEL ||
-              'command-a-plus-05-2026',
-            {
-              temperature: 0,
-
-              max_tokens:
-                3200,
-
-              /*
-               * messages now contain both:
-               * - system instructions
-               * - actual candidate/criteria data
-               *
-               * This fixes the previous Cohere
-               * "message must be at least 1 token" failure.
-               */
-              messages,
-
-              response_format: {
-                type: 'json_object',
-
+    {
+      name: 'Mistral',
+      model:
+        env.MISTRAL_MODEL ||
+        'mistral-medium-3-5',
+      key: env.MISTRAL_API_KEY,
+      call: () =>
+        callOpenAICompatibleProvider(
+          'Mistral',
+          'https://api.mistral.ai/v1/chat/completions',
+          env.MISTRAL_API_KEY!,
+          env.MISTRAL_MODEL ||
+            'mistral-medium-3-5',
+          {
+            temperature: 0,
+            messages,
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name:
+                  request.responseSchemaName,
+                strict: true,
                 schema:
                   request.responseSchema,
               },
             },
-          ),
-      },
-    ]
+          },
+        ),
+    },
 
+    {
+      name: 'NVIDIA NIM #1',
+      model:
+        env.NVIDIA_MODEL_1 ||
+        'z-ai/glm-5.3',
+      key:
+        env.NVIDIA_NIM_API_KEY_1,
+      call: () =>
+        callOpenAICompatibleProvider(
+          'NVIDIA NIM #1',
+          'https://integrate.api.nvidia.com/v1/chat/completions',
+          env.NVIDIA_NIM_API_KEY_1!,
+          env.NVIDIA_MODEL_1 ||
+            'z-ai/glm-5.3',
+          {
+            temperature: 0,
+            max_tokens:
+              12000,
+            messages,
+            response_format: structuredResponseFormat,
+          },
+        ),
+    },
 
-  const attempts: AIProviderAttempt[] =
-    []
+    {
+      name: 'NVIDIA NIM #2',
+      model:
+        env.NVIDIA_MODEL_2 ||
+        'z-ai/glm-5.3-flash',
+      key:
+        env.NVIDIA_NIM_API_KEY_2,
+      call: () =>
+        callOpenAICompatibleProvider(
+          'NVIDIA NIM #2',
+          'https://integrate.api.nvidia.com/v1/chat/completions',
+          env.NVIDIA_NIM_API_KEY_2!,
+          env.NVIDIA_MODEL_2 ||
+            'z-ai/glm-5.3-flash',
+          {
+            temperature: 0,
+            max_tokens:
+              12000,
+            messages,
+            response_format: structuredResponseFormat,
+          },
+        ),
+    },
+  ]
+
+  const attempts: AIProviderAttempt[] = []
 
   for (
     let index = 0;

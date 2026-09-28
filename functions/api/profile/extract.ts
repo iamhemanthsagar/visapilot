@@ -7,17 +7,25 @@ interface Env {
   OPENROUTER_API_KEY?: string
   OPENROUTER_MODEL?: string
 
+  GEMINI_API_KEY?: string
+  GOOGLE_AI_STUDIO_KEY?: string
+  GEMINI_MODEL?: string
+
+  COHERE_API_KEY?: string
+  COHERE_MODEL?: string
+
+  MISTRAL_API_KEY?: string
+  MISTRAL_MODEL?: string
+
   NVIDIA_NIM_API_KEY_1?: string
   NVIDIA_MODEL_1?: string
 
   NVIDIA_NIM_API_KEY_2?: string
   NVIDIA_MODEL_2?: string
 
-  MISTRAL_API_KEY?: string
-  MISTRAL_MODEL?: string
-
-  COHERE_API_KEY?: string
-  COHERE_MODEL?: string
+  USE_LOCAL_MODEL?: string
+  LOCAL_LLM_ENDPOINT?: string
+  LOCAL_LLM_MODEL?: string
 }
 
 type ParsedPage = {
@@ -503,6 +511,36 @@ export async function onRequestPost(
   }
 
   const providers = [
+    // ─── Local LLM (LM Studio) ──────────────────────────────────────────────
+    ...(context.env.USE_LOCAL_MODEL === 'true' && context.env.LOCAL_LLM_ENDPOINT
+      ? [{
+          name: 'LM Studio (Local)',
+          model: context.env.LOCAL_LLM_MODEL || 'local-model',
+          key: 'local',
+          call: () =>
+            callOpenAICompatibleProvider(
+              'LM Studio (Local)',
+              context.env.LOCAL_LLM_ENDPOINT!,
+              'local',
+              context.env.LOCAL_LLM_MODEL || 'local-model',
+              {
+                temperature: 0,
+                messages: [
+                  {
+                    role: 'system',
+                    content: SYSTEM_PROMPT,
+                  },
+                  {
+                    role: 'user',
+                    content: userPrompt,
+                  },
+                ],
+                response_format: { type: 'text' },
+              },
+            ),
+        }]
+      : []),
+
     {
       name: 'Groq',
       model:
@@ -535,6 +573,111 @@ export async function onRequestPost(
 
             response_format:
               structuredResponseFormat,
+          },
+        ),
+    },
+
+    {
+      name: 'OpenRouter',
+      model:
+        context.env.OPENROUTER_MODEL ||
+        'openrouter/auto',
+      key:
+        context.env.OPENROUTER_API_KEY,
+
+      call: () =>
+        callOpenAICompatibleProvider(
+          'OpenRouter',
+          'https://openrouter.ai/api/v1/chat/completions',
+          context.env.OPENROUTER_API_KEY!,
+          context.env.OPENROUTER_MODEL ||
+            'openrouter/auto',
+          {
+            temperature: 0,
+
+            messages: [
+              {
+                role: 'system',
+                content: SYSTEM_PROMPT,
+              },
+              {
+                role: 'user',
+                content: userPrompt,
+              },
+            ],
+
+            response_format:
+              structuredResponseFormat,
+          },
+        ),
+    },
+
+    {
+      name: 'Google AI Studio (Gemini)',
+      model:
+        context.env.GEMINI_MODEL ||
+        'gemini-2.0-flash',
+      key:
+        context.env.GEMINI_API_KEY ||
+        context.env.GOOGLE_AI_STUDIO_KEY,
+
+      call: () =>
+        callOpenAICompatibleProvider(
+          'Google AI Studio (Gemini)',
+          'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+          (context.env.GEMINI_API_KEY || context.env.GOOGLE_AI_STUDIO_KEY)!,
+          context.env.GEMINI_MODEL ||
+            'gemini-2.0-flash',
+          {
+            temperature: 0,
+
+            messages: [
+              {
+                role: 'system',
+                content: SYSTEM_PROMPT,
+              },
+              {
+                role: 'user',
+                content: userPrompt,
+              },
+            ],
+
+            response_format: { type: 'json_object' },
+          },
+        ),
+    },
+
+    {
+      name: 'Cohere',
+      model:
+        context.env.COHERE_MODEL ||
+        'command-a-plus-05-2026',
+      key:
+        context.env.COHERE_API_KEY,
+
+      call: () =>
+        callCohere(
+          context.env.COHERE_API_KEY!,
+          context.env.COHERE_MODEL ||
+            'command-a-plus-05-2026',
+          {
+            temperature: 0,
+
+            messages: [
+              {
+                role: 'system',
+                content: SYSTEM_PROMPT,
+              },
+              {
+                role: 'user',
+                content: userPrompt,
+              },
+            ],
+
+            response_format: {
+              type: 'json_object',
+              schema: extractionSchema,
+            },
           },
         ),
     },
@@ -630,71 +773,6 @@ export async function onRequestPost(
           {
             temperature: 0,
             max_tokens: 12000,
-
-            messages: [
-              {
-                role: 'system',
-                content: SYSTEM_PROMPT,
-              },
-              {
-                role: 'user',
-                content: userPrompt,
-              },
-            ],
-          },
-        ),
-    },
-
-    {
-      name: 'OpenRouter',
-      model:
-        context.env.OPENROUTER_MODEL ||
-        'openrouter/auto',
-      key:
-        context.env.OPENROUTER_API_KEY,
-
-      call: () =>
-        callOpenAICompatibleProvider(
-          'OpenRouter',
-          'https://openrouter.ai/api/v1/chat/completions',
-          context.env.OPENROUTER_API_KEY!,
-          context.env.OPENROUTER_MODEL ||
-            'openrouter/auto',
-          {
-            temperature: 0,
-
-            messages: [
-              {
-                role: 'system',
-                content: SYSTEM_PROMPT,
-              },
-              {
-                role: 'user',
-                content: userPrompt,
-              },
-            ],
-
-            response_format:
-              structuredResponseFormat,
-          },
-        ),
-    },
-
-    {
-      name: 'Cohere',
-      model:
-        context.env.COHERE_MODEL ||
-        'command-a-plus-05-2026',
-      key:
-        context.env.COHERE_API_KEY,
-
-      call: () =>
-        callCohere(
-          context.env.COHERE_API_KEY!,
-          context.env.COHERE_MODEL ||
-            'command-a-plus-05-2026',
-          {
-            temperature: 0,
 
             messages: [
               {
